@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "AI Chat Assistant",
+  "version": "1.0.0",
+  "description": "Beautiful chat interface to interact with page content and YouTube videos",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
