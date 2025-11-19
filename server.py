@@ -275,7 +275,7 @@ def health_check():
 def clear_session(session_id):
     if session_id in context_store:
         del context_store[session_id]
-        vector_db.delete(filter={"session_id": session_id})
+        #vector_db.delete(filter={"session_id": session_id})
         
         print(f"\nSession cleared: {session_id}")
         print(f"Active sessions remaining: {len(context_store)}\n")
