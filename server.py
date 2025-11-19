@@ -191,14 +191,28 @@ def ask():
             page_data = context.get('pageData', {})
             results = vector_db.similarity_search(
             query=message,
-            k=1,
+            k=5,
             filter={"session_id": session_id}
             )
             context_chunks = "\n\n".join([doc.page_content for doc in results])
+            if not context_chunks.strip():
+                answer = "No relevant information was found in the provided content."
+            else:
+                # prompt=rag_prompt.invoke({
+                #     "context": context_text,
+                #     "question": message
+                # })
+                chain=rag_prompt | llm | parser
+                answer=chain.invoke(
+                    {
+                        "context": context_chunks,
+                        "question": message
+                    }
+                )
             response = {
-                    "reply": context_chunks,
+                    "reply": answer,
                     "context": "youtube",
-                     "pageTitle": page_data.get('title')
+                    "pageTitle": page_data.get('title')
                 }
         else:
             print("No context found for this session")
