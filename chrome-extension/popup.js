@@ -5,11 +5,17 @@ const sendBtn = document.getElementById('sendBtn');
 let pageData = null;
 let isYouTube = false;
 let videoId = null;
+let sessionId = null;
+let port = null;
 
-const YOUTUBE_API = '';
-const PAGE_API = '';
+const BASE_URL = 'http://localhost:5000';
+const YOUTUBE_INIT_API = `${BASE_URL}/youtube`;
+const PAGE_INIT_API = `${BASE_URL}/page`;
+const ASK_API = `${BASE_URL}/ask`;
 
 async function init() {
+  port = chrome.runtime.connect({ name: 'popup' });
+  
   addMessage('system', 'Loading page content...');
   
   try {
@@ -18,21 +24,50 @@ async function init() {
     if (tab.url.includes('youtube.com/watch')) {
       isYouTube = true;
       videoId = extractYouTubeId(tab.url);
+      
+      const response = await fetch(YOUTUBE_INIT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: videoId })
+      });
+      
+      const data = await response.json();
+      sessionId = data.sessionId;
+      
+      chrome.runtime.sendMessage({
+        type: 'REGISTER_SESSION',
+        sessionId: sessionId
+      });
+      
       addMessage('system', `YouTube video detected: ${videoId}`);
     } else {
-      // Get page content
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: getPageContent
       });
       pageData = result.result;
-      console.log('Page Data:', pageData);
+      
+      const response = await fetch(PAGE_INIT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageData: pageData })
+      });
+      
+      const data = await response.json();
+      sessionId = data.sessionId;
+      
+
+      chrome.runtime.sendMessage({
+        type: 'REGISTER_SESSION',
+        sessionId: sessionId
+      });
+      
       addMessage('system', 'Page content loaded successfully!');
     }
     
     addMessage('assistant', 'Hi! I\'m ready to help. What would you like to know?');
   } catch (error) {
-    addMessage('system', 'Error loading page content: ' + error.message);
+    addMessage('system', 'Error loading content: ' + error.message);
   }
 }
 
@@ -45,7 +80,7 @@ function getPageContent() {
   return {
     title: document.title,
     url: window.location.href,
-    content: document.body.innerText.substring(0, 5000), // Limit content
+    content: document.body.innerText,
     description: document.querySelector('meta[name="description"]')?.content || ''
   };
 }
@@ -93,27 +128,14 @@ async function sendMessage() {
   showTyping();
 
   try {
-    let response;
-    
-    if (isYouTube && videoId) {
-      response = await fetch(YOUTUBE_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: videoId,
-          message: message
-        })
-      });
-    } else {
-      response = await fetch(PAGE_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pageData: pageData,
-          message: message
-        })
-      });
-    }
+    const response = await fetch(ASK_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: sessionId,
+        message: message
+      })
+    });
 
     const data = await response.json();
     removeTyping();
