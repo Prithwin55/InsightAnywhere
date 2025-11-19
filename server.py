@@ -2,9 +2,32 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
 import json
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+
+embedding_model = OpenAIEmbeddings(
+    model="text-embedding-3-small"
+)
+
+vector_db = Chroma(
+    collection_name="sessions",
+    embedding_function=embedding_model,
+    persist_directory="./chroma_store"
+)
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,
+    chunk_overlap=100
+)
+
 
 context_store = {}
 
@@ -69,7 +92,22 @@ def init_page():
             "pageData": page_data,
             "initialized_at": datetime.now().isoformat()
         }
-        
+        content = page_data.get("content", "")
+        chunks = text_splitter.split_text(content)
+
+        texts = []
+        metadatas = []
+
+        for chunk in chunks:
+            texts.append(chunk)
+            metadatas.append({
+                "session_id": session_id,
+                "url": page_data.get('url'),
+                "title": page_data.get('title')
+            })
+
+        vector_db.add_texts(texts=texts, metadatas=metadatas)
+
         response = {
             "success": True,
             "sessionId": session_id,
@@ -94,6 +132,18 @@ def ask():
         context = context_store.get(session_id, {})
         context_type = context.get('type', 'unknown')
         
+        results = vector_db.similarity_search(
+        query=message,
+        k=1,
+        filter={"session_id": session_id}
+        )
+        context_chunks = "\n\n".join([doc.page_content for doc in results])
+        response = {
+                "reply": context_chunks,
+                "context": "youtube",
+                "videoId": "video_id"
+            }
+
         print("\n" + "="*60)
         print("NEW QUESTION")
         print("="*60)
@@ -103,39 +153,39 @@ def ask():
         print(f"User Message: {message}")
         print("-" * 60)
         
-        if context_type == 'youtube':
-            video_id = context.get('videoId')
-            print(f"Video ID: {video_id}")
-            print(f"YouTube URL: {context.get('url')}")
-            print("="*60 + "\n")
+        # if context_type == 'youtube':
+        #     video_id = context.get('videoId')
+        #     print(f"Video ID: {video_id}")
+        #     print(f"YouTube URL: {context.get('url')}")
+        #     print("="*60 + "\n")
             
             
-            response = {
-                "reply": f"I received your question about the YouTube video (ID: {video_id}). Question: '{message}'. Processing video content...",
-                "context": "youtube",
-                "videoId": video_id
-            }
+        #     response = {
+        #         "reply": f"I received your question about the YouTube video (ID: {video_id}). Question: '{message}'. Processing video content...",
+        #         "context": "youtube",
+        #         "videoId": video_id
+        #     }
             
-        elif context_type == 'page':
-            page_data = context.get('pageData', {})
-            print(f"Page: {page_data.get('title')}")
-            print(f"URL: {page_data.get('url')}")
-            print("="*60 + "\n")
+        # elif context_type == 'page':
+        #     page_data = context.get('pageData', {})
+        #     print(f"Page: {page_data.get('title')}")
+        #     print(f"URL: {page_data.get('url')}")
+        #     print("="*60 + "\n")
             
             
-            response = {
-                "reply": f"I received your question about '{page_data.get('title')}'. Question: '{message}'. Analyzing page content...",
-                "context": "page",
-                "pageTitle": page_data.get('title')
-            }
+        #     response = {
+        #         "reply": f"I received your question about '{page_data.get('title')}'. Question: '{message}'. Analyzing page content...",
+        #         "context": "page",
+        #         "pageTitle": page_data.get('title')
+        #     }
             
-        else:
-            print("No context found for this session")
-            print("="*60 + "\n")
-            response = {
-                "reply": "Sorry, I couldn't find the context for this conversation. Please reload the extension.",
-                "context": "none"
-            }
+        # else:
+        #     print("No context found for this session")
+        #     print("="*60 + "\n")
+        #     response = {
+        #         "reply": "Sorry, I couldn't find the context for this conversation. Please reload the extension.",
+        #         "context": "none"
+        #     }
         
         return jsonify(response), 200
         
