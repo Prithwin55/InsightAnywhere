@@ -8,11 +8,15 @@ from langchain_openai import OpenAIEmbeddings
 import os
 from helper import fetch_youtube_transcript
 from dotenv import load_dotenv
+from llm import llm
+from prompts import rag_prompt
+from langchain_core.output_parsers import StrOutputParser
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+parser= StrOutputParser()
 
 embedding_model = OpenAIEmbeddings(
     model="text-embedding-3-small"
@@ -161,8 +165,24 @@ def ask():
 
             context_text = "\n\n".join([doc.page_content for doc in results])
 
+
+            if not context_text.strip():
+                answer = "No relevant information was found in the provided content."
+            else:
+                # prompt=rag_prompt.invoke({
+                #     "context": context_text,
+                #     "question": message
+                # })
+                chain=rag_prompt | llm | parser
+                answer=chain.invoke(
+                    {
+                        "context": context_text,
+                        "question": message
+                    }
+                )
+
             response = {
-                "reply": context_text,
+                "reply": answer,
                 "context": "youtube",
                 "videoId": video_id
             }
@@ -187,7 +207,7 @@ def ask():
                 "reply": "Sorry, I couldn't find the context for this conversation. Please reload the extension.",
                 "context": "none"
             }
-            
+
         print("\n" + "="*60)
         print("NEW QUESTION")
         print("="*60)

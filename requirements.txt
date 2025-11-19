@@ -1,6 +1,8 @@
 Flask==3.0.0
 flask-cors==4.0.0
 Werkzeug==3.0.1
-pip install langchain openai chromadb
-pip install youtube-transcript-api
-
+langchain 
+youtube-transcript-api
+langchain-chroma
+langchain_openai
+langchain_core
