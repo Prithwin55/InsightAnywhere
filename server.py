@@ -6,6 +6,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 import os
+from helper import fetch_youtube_transcript
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -36,35 +37,53 @@ def init_youtube():
     try:
         data = request.get_json()
         video_id = data.get('videoId')
-        
+
         print("\n" + "="*60)
         print("YOUTUBE VIDEO INITIALIZED")
         print("="*60)
-        print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Video ID: {video_id}")
         print(f"YouTube URL: https://www.youtube.com/watch?v={video_id}")
         print("="*60 + "\n")
-        
-        # Store video context
+
         session_id = f"yt_{video_id}"
+
+        transcript_text = fetch_youtube_transcript(video_id)
+
+        if not transcript_text.strip():
+            return jsonify({
+                "success": False,
+                "sessionId": session_id,
+                "message": "Transcript not found"
+            }), 400
+
+        chunks = text_splitter.split_text(transcript_text)
+
+        metadatas = [{
+            "session_id": session_id,
+            "video_id": video_id,
+            "url": f"https://www.youtube.com/watch?v={video_id}"
+        } for _ in chunks]
+
+
+        vector_db.add_texts(texts=chunks, metadatas=metadatas)
+
         context_store[session_id] = {
             "type": "youtube",
             "videoId": video_id,
             "url": f"https://www.youtube.com/watch?v={video_id}",
             "initialized_at": datetime.now().isoformat()
         }
-        
-        response = {
+
+        return jsonify({
             "success": True,
             "sessionId": session_id,
-            "message": "YouTube video context loaded"
-        }
-        
-        return jsonify(response), 200
-        
+            "message": "Transcript loaded, chunked, and embedded"
+        }), 200
+
     except Exception as e:
         print(f"Error in YouTube initialization: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/page', methods=['POST'])
@@ -132,18 +151,43 @@ def ask():
         context = context_store.get(session_id, {})
         context_type = context.get('type', 'unknown')
         
-        results = vector_db.similarity_search(
-        query=message,
-        k=1,
-        filter={"session_id": session_id}
-        )
-        context_chunks = "\n\n".join([doc.page_content for doc in results])
-        response = {
-                "reply": context_chunks,
+        if context_type == 'youtube':
+            video_id = context.get('videoId')
+            results = vector_db.similarity_search(
+                query=message,
+                k=5,
+                filter={"session_id": session_id}
+            )
+
+            context_text = "\n\n".join([doc.page_content for doc in results])
+
+            response = {
+                "reply": context_text,
                 "context": "youtube",
-                "videoId": "video_id"
+                "videoId": video_id
             }
 
+        elif context_type == 'page':
+            page_data = context.get('pageData', {})
+            results = vector_db.similarity_search(
+            query=message,
+            k=1,
+            filter={"session_id": session_id}
+            )
+            context_chunks = "\n\n".join([doc.page_content for doc in results])
+            response = {
+                    "reply": context_chunks,
+                    "context": "youtube",
+                     "pageTitle": page_data.get('title')
+                }
+        else:
+            print("No context found for this session")
+            print("="*60 + "\n")
+            response = {
+                "reply": "Sorry, I couldn't find the context for this conversation. Please reload the extension.",
+                "context": "none"
+            }
+            
         print("\n" + "="*60)
         print("NEW QUESTION")
         print("="*60)
